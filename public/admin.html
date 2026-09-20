@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Panel — EmpStats</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+.tab-hidden{display:none;}
+.table-scroll{overflow-x:auto;}
+.mgmt-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.mgmt-grid .section{margin-bottom:0;}
+.import-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.import-card{border:1px solid var(--border);border-radius:11px;padding:16px 18px;background:#f7faf8;}
+.import-card .import-result{margin-top:10px;font-size:12.5px;font-weight:600;}
+.import-card .import-result.ok{color:#2e7d32;}
+.import-card .import-result.err{color:var(--red);}
+.add-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.add-row input{width:auto;flex:1;min-width:100px;}
+.add-row .btn{padding:8px 16px;font-size:12.5px;flex:0 0 auto;}
+.status-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;}
+.status-active{background:#e8f5e9;color:#2e7d32;}
+.status-inactive{background:#fafafa;color:var(--muted);}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
+.subtab{padding:7px 14px;font-size:12px;font-weight:700;color:var(--muted);
+  cursor:pointer;border-radius:20px;border:1px solid var(--border);background:var(--card);}
+.subtab.active{background:var(--green-mid);color:#fff;border-color:var(--green-mid);}
+.trunc{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.row-actions{display:flex;gap:6px;}
+.row-actions .btn{padding:5px 10px;font-size:11.5px;}
+@media(max-width:900px){
+  .mgmt-grid,.import-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">✚</div>
+      <div class="brand-name" id="org-name">EmpStats</div>
+      <div class="role-chip" id="role-chip">Admin</div>
+    </div>
+    <button class="btn-ghost" onclick="authLogout()">Sign out</button>
+  </div>
+  <div class="body-card" id="app">
+    <div class="loader"><div class="spinner"></div></div>
+  </div>
+</div>
+<script src="/auth.js"></script>
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+let mainTab = 'management';
+let explorerTab = 'employees';
+
+let usersData = [];
+let goalTypesData = [];
+let checkupTypesData = [];
+let filterOptions = { years: [], months: [] };
+
+// Data explorer per-tab state: filters + pagination + rows
+const explorerState = {
+  employees:             { page:1, pages:1, total:0, rows:[], filters:{ year:'', month:'', search:'' } },
+  health:                { page:1, pages:1, total:0, rows:[], filters:{ year:'', search:'' } },
+  consultations:         { page:1, pages:1, total:0, rows:[], filters:{ year:'', month:'', search:'' } },
+  'consultation-readings':{ page:1, pages:1, total:0, rows:[], filters:{ search:'' } },
+  goals:                 { page:1, pages:1, total:0, rows:[], filters:{ status:'', search:'' } },
+  'employee-scores':     { page:1, pages:1, total:0, rows:[], filters:{ search:'' } }
+};
+
+const EXPLORER_TABS = [
+  { key:'employees', label:'Employees' },
+  { key:'health', label:'Health Records' },
+  { key:'consultations', label:'Consultations' },
+  { key:'consultation-readings', label:'Consultation Readings' },
+  { key:'goals', label:'Goals' },
+  { key:'employee-scores', label:'Employee Scores' }
+];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+async function init() {
+  const session = await authRequire('admin');
+  if (!session) return;
+  const chip = document.getElementById('role-chip');
+  if (chip && session.username) chip.textContent = 'Admin · ' + session.username;
+  const cfg = await getConfig();
+  if (cfg.orgName) document.getElementById('org-name').textContent = cfg.orgName;
+
+  renderShell();
+  await Promise.all([loadUsers(), loadGoalTypes(), loadCheckupTypes(), loadFilterOptions()]);
+  renderManagement();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHELL
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function renderShell() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="dash-tabs">
+      <div class="dash-tab" data-tab="management" onclick="switchMainTab('management')">Management</div>
+      <div class="dash-tab" data-tab="explorer" onclick="switchMainTab('explorer')">Data Explorer</div>
+    </div>
+    <div class="dash-panel" id="panel-management"></div>
+    <div class="dash-panel" id="panel-explorer"></div>
+  `;
+  markMainTab();
+}
+
+function switchMainTab(tab) {
+  mainTab = tab;
+  markMainTab();
+  if (tab === 'management') renderManagement();
+  else renderExplorerShell();
+}
+
+function markMainTab() {
+  document.querySelectorAll('.dash-tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === mainTab);
+  });
+  document.getElementById('panel-management').classList.toggle('active', mainTab === 'management');
+  document.getElementById('panel-explorer').classList.toggle('active', mainTab === 'explorer');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MANAGEMENT TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function renderManagement() {
+  const panel = document.getElementById('panel-management');
+  panel.innerHTML = `
+    <div class="mgmt-grid" style="margin-bottom:18px;">
+      <div class="section">
+        <div class="sec-title">Users<span style="flex:1"></span>
+          <button class="btn btn-primary" style="padding:6px 14px;font-size:12px;" onclick="openUserModal()">+ Add User</button>
+        </div>
+        <div id="users-table"></div>
+      </div>
+      <div class="section">
+        <div class="sec-title">Goal Types</div>
+        <div id="goal-types-box"></div>
+      </div>
+    </div>
+    <div class="section" style="margin-bottom:18px;">
+      <div class="sec-title">Checkup Types</div>
+      <div id="checkup-types-box"></div>
+    </div>
+    <div class="section" style="margin-bottom:0;">
+      <div class="sec-title">Import Data</div>
+      <div class="import-grid">
+        <div class="import-card">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">Employee CSV Import</div>
+          <input type="file" id="import-emp-file" accept=".csv,.xlsx,.xls">
+          <div class="modal-row" style="margin-top:10px;">
+            <button class="btn btn-primary" onclick="doImport('employees')">Upload</button>
+          </div>
+          <div id="import-emp-status" class="import-result"></div>
+        </div>
+        <div class="import-card">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;">AHC Excel Import</div>
+          <input type="file" id="import-health-file" accept=".csv,.xlsx,.xls">
+          <div class="modal-row" style="margin-top:10px;">
+            <button class="btn btn-primary" onclick="doImport('health')">Upload</button>
+          </div>
+          <div id="import-health-status" class="import-result"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  renderUsersTable();
+  renderGoalTypes();
+  renderCheckupTypes();
+}
+
+/* ── Users ────────────────────────────────────────────────────────────── */
+
+async function loadUsers() {
+  const res = await apiFetch('/api/admin/users');
+  usersData = (res && !res.error) ? res : [];
+}
+
+function renderUsersTable() {
+  const box = document.getElementById('users-table');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${usersData.length ? usersData.map(u => `
+            <tr>
+              <td>${h(u.username)}</td>
+              <td>${h(u.role)}</td>
+              <td class="row-actions">
+                <button class="btn btn-secondary" onclick="openUserModal(${h(u.id)})">Edit</button>
+                <button class="btn btn-danger" onclick="deleteUser(${h(u.id)}, '${h(u.username).replace(/'/g,"\\'")}')">Delete</button>
+              </td>
+            </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--muted);">No users found.</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function openUserModal(id) {
+  const editing = !!id;
+  const user = editing ? usersData.find(u => u.id === id) : null;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'user-modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>${editing ? 'Edit User' : 'Add User'}</h3>
+      <p>${editing ? 'Update password and/or role for ' + h(user.username) + '.' : 'Create a new login account.'}</p>
+      <div class="err" id="user-modal-err"></div>
+      ${!editing ? `
+      <div class="field">
+        <label class="field-label">Username</label>
+        <input type="text" id="um-username" autocomplete="off">
+      </div>` : ''}
+      <div class="field">
+        <label class="field-label">Password${editing ? ' (leave blank to keep unchanged)' : ''}</label>
+        <input type="password" id="um-password" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label class="field-label">Role</label>
+        <select id="um-role">
+          <option value="doctor" ${user && user.role==='doctor'?'selected':''}>Doctor</option>
+          <option value="hr" ${user && user.role==='hr'?'selected':''}>HR</option>
+          <option value="org" ${user && user.role==='org'?'selected':''}>Organisation</option>
+          <option value="admin" ${user && user.role==='admin'?'selected':''}>Admin</option>
+        </select>
+      </div>
+      <div class="modal-row">
+        <button class="btn btn-secondary" onclick="closeModal('user-modal-overlay')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitUserModal(${editing ? h(id) : 'null'})">${editing ? 'Save' : 'Create'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function submitUserModal(id) {
+  const errBox = document.getElementById('user-modal-err');
+  errBox.textContent = '';
+  const password = document.getElementById('um-password').value;
+  const role = document.getElementById('um-role').value;
+
+  if (!id) {
+    const username = document.getElementById('um-username').value.trim();
+    if (!username) { errBox.textContent = 'Username is required.'; return; }
+    if (!password || password.length < 5) { errBox.textContent = 'Password must be at least 5 characters.'; return; }
+    const res = await apiFetch('/api/admin/users', { method:'POST', body:{ username, password, role } });
+    if (!res || res.error) { errBox.textContent = (res && res.error) || 'Failed to create user.'; return; }
+    showToast('User created.', 'success');
+  } else {
+    if (password && password.length < 5) { errBox.textContent = 'Password must be at least 5 characters.'; return; }
+    const body = { role };
+    if (password) body.password = password;
+    const res = await apiFetch('/api/admin/users/' + id, { method:'PUT', body });
+    if (!res || res.error) { errBox.textContent = (res && res.error) || 'Failed to update user.'; return; }
+    showToast('User updated.', 'success');
+  }
+  closeModal('user-modal-overlay');
+  await loadUsers();
+  renderUsersTable();
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+  const res = await apiFetch('/api/admin/users/' + id, { method:'DELETE' });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to delete user.', 'error'); return; }
+  showToast('User deleted.', 'success');
+  await loadUsers();
+  renderUsersTable();
+}
+
+/* ── Goal Types ───────────────────────────────────────────────────────── */
+
+async function loadGoalTypes() {
+  const res = await apiFetch('/api/admin/goal-types');
+  goalTypesData = (res && !res.error) ? res : [];
+}
+
+function renderGoalTypes() {
+  const box = document.getElementById('goal-types-box');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="chip-list">
+      ${goalTypesData.length ? goalTypesData.map(g => `
+        <span class="chip ${g.is_active ? 'active' : 'inactive'}" style="cursor:pointer;" onclick="toggleGoalType(${h(g.id)})">
+          ${h(g.name)}
+          <button onclick="event.stopPropagation();deleteGoalType(${h(g.id)}, '${h(g.name).replace(/'/g,"\\'")}')">✕</button>
+        </span>`).join('') : `<span style="color:var(--muted);font-size:12.5px;">No goal types yet.</span>`}
+    </div>
+    <div class="add-row">
+      <input type="text" id="new-goal-type" placeholder="New goal type name">
+      <button class="btn btn-primary" onclick="addGoalType()">Add</button>
+    </div>`;
+}
+
+async function toggleGoalType(id) {
+  const res = await apiFetch('/api/admin/goal-types/' + id, { method:'PUT' });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to update goal type.', 'error'); return; }
+  await loadGoalTypes();
+  renderGoalTypes();
+}
+
+async function deleteGoalType(id, name) {
+  if (!confirm(`Delete goal type "${name}"?`)) return;
+  const res = await apiFetch('/api/admin/goal-types/' + id, { method:'DELETE' });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to delete goal type.', 'error'); return; }
+  showToast('Goal type deleted.', 'success');
+  await loadGoalTypes();
+  renderGoalTypes();
+}
+
+async function addGoalType() {
+  const input = document.getElementById('new-goal-type');
+  const name = input.value.trim();
+  if (!name) { showToast('Enter a goal type name.', 'error'); return; }
+  const res = await apiFetch('/api/admin/goal-types', { method:'POST', body:{ name } });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to add goal type.', 'error'); return; }
+  input.value = '';
+  showToast('Goal type added.', 'success');
+  await loadGoalTypes();
+  renderGoalTypes();
+}
+
+/* ── Checkup Types ────────────────────────────────────────────────────── */
+
+async function loadCheckupTypes() {
+  const res = await apiFetch('/api/admin/checkup-types');
+  checkupTypesData = (res && !res.error) ? res : [];
+}
+
+function renderCheckupTypes() {
+  const box = document.getElementById('checkup-types-box');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Name</th><th>Unit</th><th>Normal Range</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${checkupTypesData.length ? checkupTypesData.map(c => `
+            <tr>
+              <td>${h(c.name)}</td>
+              <td>${h(c.unit || '—')}</td>
+              <td>${h(c.normal_range || '—')}</td>
+              <td><span class="status-badge ${c.is_active ? 'status-active' : 'status-inactive'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
+              <td class="row-actions">
+                <button class="btn btn-secondary" onclick="toggleCheckupType(${h(c.id)})">${c.is_active ? 'Deactivate' : 'Activate'}</button>
+                <button class="btn btn-danger" onclick="deleteCheckupType(${h(c.id)}, '${h(c.name).replace(/'/g,"\\'")}')">Delete</button>
+              </td>
+            </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--muted);">No checkup types yet.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <div class="add-row">
+      <input type="text" id="new-checkup-name" placeholder="Name">
+      <input type="text" id="new-checkup-unit" placeholder="Unit">
+      <input type="text" id="new-checkup-range" placeholder="Normal Range">
+      <button class="btn btn-primary" onclick="addCheckupType()">Add</button>
+    </div>`;
+}
+
+async function toggleCheckupType(id) {
+  const res = await apiFetch('/api/admin/checkup-types/' + id, { method:'PUT' });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to update checkup type.', 'error'); return; }
+  await loadCheckupTypes();
+  renderCheckupTypes();
+}
+
+async function deleteCheckupType(id, name) {
+  if (!confirm(`Delete checkup type "${name}"?`)) return;
+  const res = await apiFetch('/api/admin/checkup-types/' + id, { method:'DELETE' });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to delete checkup type.', 'error'); return; }
+  showToast('Checkup type deleted.', 'success');
+  await loadCheckupTypes();
+  renderCheckupTypes();
+}
+
+async function addCheckupType() {
+  const name = document.getElementById('new-checkup-name').value.trim();
+  const unit = document.getElementById('new-checkup-unit').value.trim();
+  const normal_range = document.getElementById('new-checkup-range').value.trim();
+  if (!name) { showToast('Enter a checkup type name.', 'error'); return; }
+  const res = await apiFetch('/api/admin/checkup-types', { method:'POST', body:{ name, unit, normal_range } });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to add checkup type.', 'error'); return; }
+  showToast('Checkup type added.', 'success');
+  await loadCheckupTypes();
+  renderCheckupTypes();
+}
+
+/* ── Import ───────────────────────────────────────────────────────────── */
+
+async function doImport(kind) {
+  const fileInput = document.getElementById(kind === 'employees' ? 'import-emp-file' : 'import-health-file');
+  const statusBox = document.getElementById(kind === 'employees' ? 'import-emp-status' : 'import-health-status');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Choose a file first.', 'error'); return; }
+
+  statusBox.className = 'import-result';
+  statusBox.innerHTML = '<div class="spinner spinner-sm"></div> Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await apiFetch('/api/admin/import/' + kind, { method:'POST', body: fd });
+
+  if (!res || res.error) {
+    statusBox.className = 'import-result err';
+    statusBox.textContent = (res && res.error) || 'Import failed.';
+    showToast('Import failed.', 'error');
+    return;
+  }
+  statusBox.className = 'import-result ok';
+  statusBox.textContent = `Imported: ${res.imported ?? 0}, Skipped: ${res.skipped ?? 0}`;
+  showToast('Import complete.', 'success');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODAL HELPER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DATA EXPLORER TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+async function loadFilterOptions() {
+  const res = await apiFetch('/api/data/filter-options');
+  filterOptions = (res && !res.error) ? res : { years:[], months:[] };
+}
+
+function renderExplorerShell() {
+  const panel = document.getElementById('panel-explorer');
+  panel.innerHTML = `
+    <div class="subtabs">
+      ${EXPLORER_TABS.map(t => `<div class="subtab ${explorerTab===t.key?'active':''}" onclick="switchExplorerTab('${t.key}')">${h(t.label)}</div>`).join('')}
+    </div>
+    <div id="explorer-body"></div>
+  `;
+  renderExplorerBody();
+}
+
+function switchExplorerTab(tab) {
+  explorerTab = tab;
+  document.querySelectorAll('.subtab').forEach((el, i) => el.classList.toggle('active', EXPLORER_TABS[i].key === tab));
+  renderExplorerBody();
+  loadExplorerData(tab);
+}
+
+async function renderExplorerBody() {
+  const body = document.getElementById('explorer-body');
+  const st = explorerState[explorerTab];
+
+  body.innerHTML = `
+    <div class="filter-bar">
+      ${renderExplorerFilters(explorerTab)}
+      <button class="btn btn-secondary" onclick="exportExplorer()">Export</button>
+    </div>
+    <div id="explorer-table-box">
+      <div class="loader"><div class="spinner"></div></div>
+    </div>
+    <div class="pagination" id="explorer-pagination"></div>
+  `;
+
+  await loadExplorerData(explorerTab);
+}
+
+function renderExplorerFilters(tab) {
+  const st = explorerState[tab];
+  const f = st.filters;
+  const yearOpts = (list, val, onchange) => `
+    <select onchange="${onchange}">
+      <option value="">All Years</option>
+      ${(filterOptions.years||[]).map(y => `<option value="${h(y)}" ${String(val)===String(y)?'selected':''}>${h(y)}</option>`).join('')}
+    </select>`;
+  const monthOpts = (val, onchange) => `
+    <select onchange="${onchange}">
+      <option value="">All Months</option>
+      ${(filterOptions.months||[]).map(m => `<option value="${h(m)}" ${String(val)===String(m)?'selected':''}>${h(m)}</option>`).join('')}
+    </select>`;
+  const searchBox = (val) => `<input type="text" class="filter-search" placeholder="Search…" value="${h(val)}" oninput="onExplorerSearch(this.value)">`;
+
+  if (tab === 'employees') {
+    return `${yearOpts(null, f.year, `onExplorerFilterChange('year', this.value)`)}
+      ${monthOpts(f.month, `onExplorerFilterChange('month', this.value)`)}
+      ${searchBox(f.search)}`;
+  }
+  if (tab === 'health') {
+    return `${yearOpts(null, f.year, `onExplorerFilterChange('year', this.value)`)}
+      ${searchBox(f.search)}`;
+  }
+  if (tab === 'consultations') {
+    return `${yearOpts(null, f.year, `onExplorerFilterChange('year', this.value)`)}
+      ${monthOpts(f.month, `onExplorerFilterChange('month', this.value)`)}
+      ${searchBox(f.search)}`;
+  }
+  if (tab === 'consultation-readings') {
+    return `${searchBox(f.search)}`;
+  }
+  if (tab === 'goals') {
+    return `
+      <select onchange="onExplorerFilterChange('status', this.value)">
+        <option value="">All Statuses</option>
+        <option value="pending" ${f.status==='pending'?'selected':''}>Pending</option>
+        <option value="in_progress" ${f.status==='in_progress'?'selected':''}>In Progress</option>
+        <option value="completed" ${f.status==='completed'?'selected':''}>Completed</option>
+      </select>
+      ${searchBox(f.search)}`;
+  }
+  if (tab === 'employee-scores') {
+    return `${searchBox(f.search)}`;
+  }
+  return '';
+}
+
+let searchDebounce = null;
+function onExplorerSearch(value) {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    explorerState[explorerTab].filters.search = value;
+    explorerState[explorerTab].page = 1;
+    loadExplorerData(explorerTab);
+  }, 350);
+}
+
+function onExplorerFilterChange(key, value) {
+  explorerState[explorerTab].filters[key] = value;
+  explorerState[explorerTab].page = 1;
+  loadExplorerData(explorerTab);
+}
+
+function explorerEndpoint(tab) {
+  return '/api/data/' + tab;
+}
+
+function buildExplorerQS(tab, extra) {
+  const st = explorerState[tab];
+  const qs = new URLSearchParams();
+  Object.entries(st.filters).forEach(([k,v]) => { if (v) qs.set(k, v); });
+  qs.set('page', st.page);
+  if (extra) Object.entries(extra).forEach(([k,v]) => qs.set(k, v));
+  return qs.toString();
+}
+
+async function loadExplorerData(tab) {
+  if (tab !== explorerTab) return;
+  const tableBox = document.getElementById('explorer-table-box');
+  if (!tableBox) return;
+  tableBox.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+  const st = explorerState[tab];
+  const qs = buildExplorerQS(tab);
+  const res = await apiFetch(`${explorerEndpoint(tab)}?${qs}`);
+
+  if (!res || res.error) {
+    tableBox.innerHTML = `<p style="text-align:center;color:var(--red);padding:30px;">${h((res && res.error) || 'Failed to load data.')}</p>`;
+    document.getElementById('explorer-pagination').innerHTML = '';
+    return;
+  }
+
+  st.rows = res.rows || [];
+  st.total = res.total || 0;
+  st.page = res.page || st.page;
+  st.pages = res.pages || 1;
+
+  tableBox.innerHTML = renderExplorerTable(tab, st.rows);
+  renderExplorerPagination(tab, st);
+}
+
+function renderExplorerTable(tab, rows) {
+  const cols = EXPLORER_COLUMNS[tab];
+  if (!rows.length) {
+    return `<div class="table-scroll"><table><thead><tr>${cols.map(c=>`<th>${h(c.label)}</th>`).join('')}<th></th></tr></thead>
+      <tbody><tr><td colspan="${cols.length+1}" style="text-align:center;color:var(--muted);">No records found.</td></tr></tbody></table></div>`;
+  }
+  return `
+    <div class="table-scroll">
+      <table>
+        <thead><tr>${cols.map(c=>`<th>${h(c.label)}</th>`).join('')}${DELETABLE_TABS.includes(tab) ? '<th>Actions</th>' : ''}</tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr>${cols.map(c => `<td${c.trunc?' class="trunc"':''}>${c.render(r)}</td>`).join('')}${DELETABLE_TABS.includes(tab) ? `<td><button class="btn btn-danger" style="padding:5px 10px;font-size:11.5px;" onclick="deleteExplorerRow('${tab}', ${h(r.id)})">Delete</button></td>` : ''}</tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+const DELETABLE_TABS = ['consultations', 'health', 'goals'];
+
+const EXPLORER_COLUMNS = {
+  employees: [
+    { label:'Employee Name', render:r=>h(r.employee_name) },
+    { label:'Employee ID', render:r=>h(r.employee_id) },
+    { label:'Designation', render:r=>h(r.designation||'—') },
+    { label:'Location', render:r=>h(r.location||'—') },
+    { label:'Division', render:r=>h(r.division||'—') },
+    { label:'Band', render:r=>h(r.band||'—') },
+    { label:'Year', render:r=>h(r.year||'—') },
+    { label:'Month', render:r=>h(r.month||'—') }
+  ],
+  health: [
+    { label:'Employee Name', render:r=>h(r.employee_name) },
+    { label:'Parameter', render:r=>h(r.parameter) },
+    { label:'Value', render:r=>h(r.value) },
+    { label:'Unit', render:r=>h(r.unit||'—') },
+    { label:'Normal Range', render:r=>h(r.normal_range||'—') },
+    { label:'Risk Level', render:r=>riskBadge(r.risk_level) },
+    { label:'Category', render:r=>h(r.category||'—') },
+    { label:'Report Year', render:r=>h(r.report_year||'—') }
+  ],
+  consultations: [
+    { label:'Employee Name', render:r=>h(r.employee_name) },
+    { label:'Visit Date', render:r=>fmtDate(r.visit_date) },
+    { label:'Doctor', render:r=>h(r.doctor_name||'—') },
+    { label:'Complaint', trunc:true, render:r=>h(truncate(r.complaint, 40)) },
+    { label:'Diagnosis', trunc:true, render:r=>h(truncate(r.diagnosis, 40)) }
+  ],
+  'consultation-readings': [
+    { label:'Employee Name', render:r=>h(r.employee_name) },
+    { label:'Parameter', render:r=>h(r.parameter) },
+    { label:'Value', render:r=>h(r.value) },
+    { label:'Unit', render:r=>h(r.unit||'—') },
+    { label:'Normal Range', render:r=>h(r.normal_range||'—') },
+    { label:'Risk Level', render:r=>riskBadge(r.risk_level) },
+    { label:'Date', render:r=>fmtDate(r.visit_date || r.date) }
+  ],
+  goals: [
+    { label:'Employee Name', render:r=>h(r.employee_name) },
+    { label:'Type', render:r=>h(r.goal_type||r.type||'—') },
+    { label:'Goal Text', trunc:true, render:r=>h(truncate(r.goal_text, 50)) },
+    { label:'Target Date', render:r=>fmtDate(r.target_date) },
+    { label:'Status', render:r=>h(r.status||'—') },
+    { label:'Points', render:r=>h(r.points ?? '—') },
+    { label:'Doctor', render:r=>h(r.doctor_name||'—') }
+  ],
+  'employee-scores': [
+    { label:'Employee Name', render:r=>h(r.employee_name) },
+    { label:'Employee ID', render:r=>h(r.employee_id) },
+    { label:'Designation', render:r=>h(r.designation||'—') },
+    { label:'Score', render:r=>h(r.score ?? '—') },
+    { label:'Visit Date', render:r=>fmtDate(r.visit_date) },
+    { label:'Doctor', render:r=>h(r.doctor_name||'—') }
+  ]
+};
+
+function truncate(str, len) {
+  if (!str) return '—';
+  const s = String(str);
+  return s.length > len ? s.slice(0, len) + '…' : s;
+}
+
+function renderExplorerPagination(tab, st) {
+  const box = document.getElementById('explorer-pagination');
+  if (!box) return;
+  box.innerHTML = `
+    <button ${st.page<=1?'disabled':''} onclick="explorerGoPage(${st.page-1})">Prev</button>
+    <span class="pg-info">Page ${st.page} of ${st.pages || 1}, Total: ${st.total}</span>
+    <button ${st.page>=st.pages?'disabled':''} onclick="explorerGoPage(${st.page+1})">Next</button>
+  `;
+}
+
+function explorerGoPage(page) {
+  const st = explorerState[explorerTab];
+  if (page < 1 || page > st.pages) return;
+  st.page = page;
+  loadExplorerData(explorerTab);
+}
+
+async function deleteExplorerRow(tab, id) {
+  if (!confirm('Delete this record? This cannot be undone.')) return;
+  const endpointMap = { consultations:'consultations', health:'health', goals:'goals' };
+  const res = await apiFetch(`/api/data/${endpointMap[tab]}/${id}`, { method:'DELETE' });
+  if (!res || res.error) { showToast((res && res.error) || 'Failed to delete record.', 'error'); return; }
+  showToast('Record deleted.', 'success');
+  loadExplorerData(tab);
+}
+
+async function exportExplorer() {
+  const tab = explorerTab;
+  const qs = buildExplorerQS(tab, { export: 1 });
+  const res = await apiFetch(`${explorerEndpoint(tab)}?${qs}`);
+  if (res instanceof Response) {
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = tab + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    showToast('Export downloaded.', 'success');
+  } else {
+    showToast((res && res.error) || 'Export failed.', 'error');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

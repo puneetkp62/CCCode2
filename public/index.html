@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EmpStats</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.wrap{max-width:960px;padding:24px;}
+.body-card{padding:32px 28px;min-height:0;}
+.home-hero{text-align:center;padding:8px 20px 22px;}
+.h-logo{width:60px;height:60px;border-radius:16px;background:var(--green-dark);color:#fff;
+  display:inline-flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;margin-bottom:16px;}
+.home-hero h1{font-size:26px;font-weight:800;color:var(--green-dark);}
+.home-hero p{color:var(--muted);font-size:13.5px;margin-top:6px;}
+.signin-card{max-width:380px;margin:0 auto;padding:26px 28px 24px;
+  border:1px solid var(--border);border-radius:14px;background:var(--card);}
+.signin-card h2{font-size:16px;font-weight:800;color:var(--green-dark);margin-bottom:18px;text-align:center;}
+.signin-card .field{margin-bottom:14px;}
+.signin-card .err{color:var(--red);font-size:12.5px;min-height:18px;margin-bottom:6px;}
+.signin-card .btn-signin{width:100%;padding:12px;background:var(--green-mid);color:#fff;
+  border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;transition:background .15s;}
+.signin-card .btn-signin:hover:not(:disabled){background:#0e5e5b;}
+.signin-card .btn-signin:disabled{background:var(--muted);cursor:not-allowed;}
+.admin-corner{font-size:11.5px;font-weight:700;padding:5px 14px;border-radius:8px;
+  border:1px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;transition:all .15s;}
+.admin-corner:hover{color:var(--text);border-color:var(--green-mid);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">✚</div>
+      <div class="brand-name" id="org-name">EmpStats</div>
+    </div>
+    <button class="admin-corner" onclick="openAdminModal()">Admin</button>
+  </div>
+  <div class="body-card">
+    <div class="home-hero">
+      <div class="h-logo">✚</div>
+      <h1 id="org-name-2">EmpStats</h1>
+      <p>Employee Health Management System</p>
+    </div>
+    <div class="signin-card">
+      <h2>Sign in</h2>
+      <div class="field">
+        <label class="field-label" for="role-select">Role</label>
+        <select id="role-select">
+          <option value="doctor">Doctor</option>
+          <option value="hr">HR</option>
+          <option value="org">Organisation</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="username-input">Username</label>
+        <input type="text" id="username-input" autocomplete="username" placeholder="Your username" autofocus>
+      </div>
+      <div class="field">
+        <label class="field-label" for="password-input">Password</label>
+        <input type="password" id="password-input" autocomplete="current-password" placeholder="Your password">
+      </div>
+      <div class="err" id="signin-err"></div>
+      <button class="btn-signin" id="signin-btn" onclick="submitSignin()">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="admin-modal" style="display:none">
+  <div class="modal">
+    <h3>Admin Sign-in</h3>
+    <p>Administrator access only.</p>
+    <div class="field">
+      <label class="field-label" for="admin-user">Username</label>
+      <input type="text" id="admin-user" autocomplete="username" placeholder="Admin username">
+    </div>
+    <div class="field">
+      <label class="field-label" for="admin-pw">Password</label>
+      <input type="password" id="admin-pw" autocomplete="current-password" placeholder="Password">
+    </div>
+    <div class="err" id="admin-err"></div>
+    <div class="modal-row">
+      <button class="btn btn-secondary" onclick="closeAdminModal()">Cancel</button>
+      <button class="btn btn-primary" id="admin-ok" onclick="submitAdmin()">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<script src="/auth.js"></script>
+<script>
+'use strict';
+const dests = {doctor:'/doctor.html', org:'/org.html', hr:'/hr.html', admin:'/admin.html'};
+
+(async()=>{
+  try{const cfg=await getConfig();
+    if(cfg.orgName){document.getElementById('org-name').textContent=cfg.orgName;
+      document.getElementById('org-name-2').textContent=cfg.orgName;}}catch{}
+})();
+
+async function submitSignin(){
+  const role=document.getElementById('role-select').value;
+  const username=document.getElementById('username-input').value.trim();
+  const password=document.getElementById('password-input').value;
+  const btn=document.getElementById('signin-btn');
+  const errEl=document.getElementById('signin-err');
+  if(!username||!password){errEl.textContent='Please enter your username and password.';return;}
+  btn.disabled=true;btn.innerHTML='<span class="spinner spinner-sm"></span>Signing in…';errEl.textContent='';
+  const result=await apiLogin(role,username,password);
+  if(!result.ok){errEl.textContent=result.error;btn.disabled=false;btn.textContent='Sign in';
+    document.getElementById('password-input').focus();return;}
+  window.location.href=dests[result.role];
+}
+
+['role-select','username-input','password-input'].forEach(id=>{
+  document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')submitSignin();});
+});
+
+function openAdminModal(){
+  document.getElementById('admin-user').value='';document.getElementById('admin-pw').value='';
+  document.getElementById('admin-err').textContent='';document.getElementById('admin-ok').disabled=false;
+  document.getElementById('admin-ok').textContent='Sign in';
+  document.getElementById('admin-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('admin-user').focus(),50);
+}
+function closeAdminModal(){document.getElementById('admin-modal').style.display='none';}
+
+async function submitAdmin(){
+  const username=document.getElementById('admin-user').value.trim();
+  const password=document.getElementById('admin-pw').value;
+  const btn=document.getElementById('admin-ok');const errEl=document.getElementById('admin-err');
+  if(!username||!password){errEl.textContent='Please enter your username and password.';return;}
+  btn.disabled=true;btn.innerHTML='<span class="spinner spinner-sm"></span>Signing in…';errEl.textContent='';
+  const result=await apiLogin('admin',username,password);
+  if(!result.ok){errEl.textContent=result.error;btn.disabled=false;btn.textContent='Sign in';return;}
+  window.location.href=dests.admin;
+}
+
+['admin-user','admin-pw'].forEach(id=>{
+  document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')submitAdmin();});
+});
+</script>
+</body>
+</html>

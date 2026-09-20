@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doctor — EmpStats</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+/* Search */
+.search-wrap{max-width:560px;margin:40px auto 0;}
+.search-wrap h2{font-size:22px;font-weight:800;text-align:center;margin-bottom:4px;color:var(--green-dark);}
+.search-wrap .sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:22px;}
+.search-box-wrap{position:relative;}
+.search-row{display:flex;gap:0;}
+.search-row input{flex:1;font-size:15px;border-radius:10px 0 0 10px;border-right:none;}
+.search-row button{padding:10px 24px;background:var(--green-mid);color:#fff;
+  border:none;border-radius:0 10px 10px 0;font-weight:700;font-size:14px;cursor:pointer;}
+.search-row button:hover{background:#0e5e5b;}
+.search-hint{font-size:11.5px;color:var(--muted);margin-top:6px;text-align:center;}
+.search-err{color:var(--red);font-size:13px;margin-top:8px;text-align:center;}
+.search-dropdown{position:absolute;top:100%;left:0;right:0;
+  background:#fff;border:1px solid var(--border);border-top:none;
+  border-radius:0 0 12px 12px;box-shadow:0 8px 24px rgba(0,0,0,.1);
+  z-index:100;max-height:320px;overflow-y:auto;display:none;}
+.search-dropdown.open{display:block;}
+.dd-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;transition:background .1s;}
+.dd-item:last-child{border-bottom:none;}
+.dd-item:hover{background:#f0faf3;}
+.dd-avatar{width:34px;height:34px;border-radius:9px;background:var(--green-dark);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;}
+.dd-name{font-size:13.5px;font-weight:700;}
+.dd-sub{font-size:11.5px;color:var(--muted);}
+.dd-empty{padding:14px;text-align:center;color:var(--muted);font-size:13px;font-style:italic;}
+.dd-loading{padding:14px;text-align:center;color:var(--muted);font-size:13px;}
+
+/* Confirm card */
+.confirm-card{max-width:600px;margin:20px auto;border:1px solid var(--border);
+  border-radius:14px;overflow:hidden;}
+.confirm-header{background:var(--green-dark);color:#fff;padding:20px 24px;
+  display:flex;align-items:center;gap:16px;}
+.confirm-avatar{width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0;}
+.confirm-name{font-size:18px;font-weight:800;}
+.confirm-id{font-size:13px;opacity:.8;}
+.confirm-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0;}
+.confirm-cell{padding:14px 20px;border-bottom:1px solid var(--border);}
+.confirm-cell:nth-child(odd){border-right:1px solid var(--border);}
+.confirm-cell .ck{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.4px;margin-bottom:2px;}
+.confirm-cell .cv{font-size:14px;font-weight:700;}
+.confirm-actions{padding:16px 20px;display:flex;gap:10px;justify-content:flex-end;
+  background:#f7faf8;}
+
+/* Patient view */
+.patient-header{display:flex;align-items:center;gap:16px;margin-bottom:20px;
+  padding:18px 22px;background:var(--green-dark);color:#fff;border-radius:12px;}
+.patient-avatar{width:50px;height:50px;border-radius:12px;background:rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;}
+.patient-name{font-size:20px;font-weight:800;}
+.patient-sub{font-size:13px;opacity:.8;}
+.patient-actions{margin-left:auto;display:flex;gap:8px;}
+.patient-actions .btn{font-size:12px;padding:8px 16px;}
+
+/* Consultation form */
+.consult-form .section{margin-bottom:16px;}
+
+/* Preview RX */
+.rx-wrap{max-width:800px;margin:0 auto;background:#fff;
+  border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.rx-header{background:var(--green-dark);color:#fff;padding:22px 28px;
+  display:flex;justify-content:space-between;align-items:flex-start;}
+.rx-clinic{font-size:20px;font-weight:800;}
+.rx-tag{font-size:12px;opacity:.8;margin-top:3px;}
+.dr-name{font-size:15px;font-weight:800;text-align:right;}
+.dr-title{font-size:11.5px;opacity:.8;text-align:right;margin-top:2px;}
+.rx-pt{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+  padding:16px 28px;background:#f7faf8;border-bottom:1px solid var(--border);}
+.rx-pt .k{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.4px;margin-bottom:2px;}
+.rx-pt .v{font-size:13px;font-weight:700;}
+.rx-section{padding:16px 28px;border-bottom:1px solid var(--border);}
+.rx-section:last-of-type{border-bottom:none;}
+.rx-h{font-size:11px;font-weight:800;color:var(--green-dark);
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.rx-body{font-size:13.5px;line-height:1.6;}
+.rx-vitals{display:flex;gap:24px;flex-wrap:wrap;}
+.rx-vitals .k{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:2px;}
+.rx-vitals .v{font-size:14px;font-weight:800;}
+.rx-meds{list-style:none;padding:0;}
+.rx-meds li{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px dashed var(--border);}
+.rx-meds li:last-child{border:none;}
+.med-num{font-size:11px;color:var(--muted);font-weight:700;width:18px;flex-shrink:0;}
+.med-name{font-weight:800;font-size:14px;}
+.med-detail{font-size:12px;color:var(--muted);}
+.rx-goals li{display:flex;gap:12px;align-items:baseline;padding:5px 0;
+  border-bottom:1px dashed var(--border);}
+.rx-goals li:last-child{border:none;}
+.gname{font-weight:800;font-size:13.5px;}
+.gtgt{font-size:12px;color:var(--muted);}
+.gtgt b{color:var(--text);}
+.rx-footer{padding:14px 28px;background:#f7faf8;display:flex;
+  justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);}
+.rx-sig-line{border-top:1px solid var(--muted);padding-top:4px;font-size:11px;margin-top:28px;}
+
+.no-print-bar{background:var(--card);border:1px solid var(--border);
+  border-radius:12px;padding:14px 22px;display:flex;
+  align-items:center;justify-content:space-between;margin-bottom:20px;}
+.no-print-bar span{font-size:13px;color:var(--muted);}
+.preview-actions{display:flex;gap:10px;}
+
+@media print{.no-print-bar,.topbar{display:none!important;}body{background:#fff;}.rx-wrap{border:none;max-width:100%;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">✚</div>
+      <div class="brand-name" id="org-name">EmpStats</div>
+      <div class="role-chip" id="role-chip">Doctor</div>
+    </div>
+    <button class="btn-ghost" onclick="authLogout()">Sign out</button>
+  </div>
+  <div class="body-card" id="app">
+    <div class="loader"><div class="spinner"></div></div>
+  </div>
+</div>
+<script src="/auth.js"></script>
+<script>
+'use strict';
+
+let sessionData = {};
+let viewStack = [];
+
+async function init() {
+  const session = await authRequire('doctor');
+  if (!session) return;
+  const chip = document.getElementById('role-chip');
+  if (chip && session.username) chip.textContent = 'Doctor · ' + session.username;
+  const cfg = await getConfig();
+  sessionData.cfg = cfg;
+  sessionData.username = session.username;
+  if (cfg.orgName) document.getElementById('org-name').textContent = cfg.orgName;
+
+  const params = new URLSearchParams(location.search);
+  if (params.get('saved') === '1') {
+    history.replaceState({}, '', location.pathname);
+    showToast('Consultation saved successfully.', 'success');
+  }
+  showSearch();
+}
+
+function pushView(name) { viewStack.push(name); }
+function popView() {
+  viewStack.pop();
+  const prev = viewStack[viewStack.length - 1];
+  if (prev === 'patient') showPatient(sessionData.currentOid);
+  else if (prev === 'confirm') showConfirm(sessionData.confirmEmp);
+  else showSearch();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEW: SEARCH
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+let debounceTimer = null, lastQuery = '', searchResults = [];
+
+function showSearch() {
+  viewStack = ['search'];
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="search-wrap">
+      <h2>Find Employee</h2>
+      <p class="sub">Search by employee name or ID</p>
+      <div class="search-box-wrap">
+        <div class="search-row">
+          <input type="text" id="search-input" placeholder="Type name or ID (min 3 chars)…"
+            oninput="onSearchInput()" onkeydown="onSearchKey(event)" autocomplete="off">
+          <button onclick="searchById()">Search</button>
+        </div>
+        <div class="search-dropdown" id="search-dropdown"></div>
+      </div>
+      <div class="search-hint">Type at least 3 characters to see suggestions</div>
+      <div class="search-err" id="search-err"></div>
+    </div>`;
+  document.getElementById('search-input').focus();
+}
+
+function onSearchInput() {
+  const q = document.getElementById('search-input').value.trim();
+  document.getElementById('search-err').textContent = '';
+  clearTimeout(debounceTimer);
+  if (q.length < 3) { closeDropdown(); return; }
+  if (q === lastQuery) return;
+  const dd = document.getElementById('search-dropdown');
+  dd.innerHTML = '<div class="dd-loading">Searching…</div>';
+  dd.classList.add('open');
+  debounceTimer = setTimeout(() => doSearch(q), 300);
+}
+
+async function doSearch(q) {
+  lastQuery = q;
+  const data = await apiFetch(`/api/employees/search?q=${encodeURIComponent(q)}`);
+  const dd = document.getElementById('search-dropdown');
+  const curr = document.getElementById('search-input').value.trim();
+  if (curr !== q) return;
+  if (!data || data.error || !data.results || !data.results.length) {
+    searchResults = [];
+    dd.innerHTML = `<div class="dd-empty">No employees found for "${h(q)}"</div>`;
+    dd.classList.add('open'); return;
+  }
+  searchResults = data.results;
+  dd.innerHTML = data.results.map((emp, idx) => {
+    const initials = (emp.employee_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<div class="dd-item" data-idx="${idx}">
+      <div class="dd-avatar">${initials}</div>
+      <div><div class="dd-name">${h(emp.employee_name)}</div>
+        <div class="dd-sub">${h(emp.employee_id)} · ${h(emp.designation||'')}${emp.location?' · '+h(emp.location):''}</div>
+      </div></div>`;
+  }).join('');
+  dd.querySelectorAll('.dd-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const emp = searchResults[parseInt(el.dataset.idx, 10)];
+      if (emp) selectEmployee(emp);
+    });
+  });
+  dd.classList.add('open');
+}
+
+async function selectEmployee(partial) {
+  closeDropdown();
+  document.getElementById('search-input').value = partial.employee_name + ' (' + partial.employee_id + ')';
+  const full = await apiFetch(`/api/employee/${encodeURIComponent(partial.opaque_id)}`);
+  if (!full || full.error) {
+    document.getElementById('search-err').textContent = full?.error || 'Failed to load employee details.';
+    return;
+  }
+  sessionData.confirmEmp = full;
+  showConfirm(full);
+}
+
+async function searchById() {
+  const val = document.getElementById('search-input').value.trim();
+  if (!val) return;
+  document.getElementById('search-err').textContent = '';
+  const data = await apiFetch(`/api/employee/${encodeURIComponent(val)}`);
+  if (!data || data.error) {
+    document.getElementById('search-err').textContent = data?.error || 'Employee not found.';
+    return;
+  }
+  sessionData.confirmEmp = data;
+  showConfirm(data);
+}
+
+function onSearchKey(e) {
+  if (e.key === 'Escape') closeDropdown();
+  else if (e.key === 'Enter') searchById();
+}
+function closeDropdown() {
+  const dd = document.getElementById('search-dropdown');
+  dd.classList.remove('open'); dd.innerHTML = ''; lastQuery = '';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-box-wrap')) closeDropdown();
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEW: CONFIRM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function showConfirm(emp) {
+  pushView('confirm');
+  const e = emp;
+  const initials = (e.employee_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('app').innerHTML = `
+    <div class="confirm-card">
+      <div class="confirm-header">
+        <div class="confirm-avatar">${initials}</div>
+        <div><div class="confirm-name">${h(e.employee_name)}</div>
+          <div class="confirm-id">${h(e.employee_id)} · ${h(e.designation||'')}</div></div>
+      </div>
+      <div class="confirm-grid">
+        <div class="confirm-cell"><div class="ck">Age</div><div class="cv">${h(e.age||'—')}</div></div>
+        <div class="confirm-cell"><div class="ck">Gender</div><div class="cv">${h(e.gender||'—')}</div></div>
+        <div class="confirm-cell"><div class="ck">Date of Birth</div><div class="cv">${fmtDate(e.date_of_birth)}</div></div>
+        <div class="confirm-cell"><div class="ck">Location</div><div class="cv">${h(e.location||'—')}</div></div>
+        <div class="confirm-cell"><div class="ck">Division</div><div class="cv">${h(e.division||'—')}</div></div>
+        <div class="confirm-cell"><div class="ck">Band</div><div class="cv">${h(e.band||'—')}</div></div>
+        <div class="confirm-cell"><div class="ck">Zone</div><div class="cv">${h(e.zone||'—')}</div></div>
+        <div class="confirm-cell"><div class="ck">Date of Joining</div><div class="cv">${fmtDate(e.date_of_joining)}</div></div>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" onclick="showSearch()">Back</button>
+        <button class="btn btn-primary" onclick="openPatient('${h(e.opaque_id)}')">Open Record</button>
+      </div>
+    </div>`;
+}
+
+async function openPatient(oid) {
+  sessionData.currentOid = oid;
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  const data = await apiFetch(`/api/patient/${encodeURIComponent(oid)}`);
+  if (!data || data.error) {
+    app.innerHTML = `<p style="text-align:center;color:var(--red);padding:40px;">${h(data?.error||'Failed to load patient.')}</p>`;
+    return;
+  }
+  sessionData.patientData = data;
+  showPatient(oid);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEW: PATIENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function showPatient(oid) {
+  pushView('patient');
+  const data = sessionData.patientData;
+  const e = data.employee;
+  const prof = data.profile || {};
+  const initials = (e.employee_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+
+  let html = `
+    <div class="patient-header">
+      <div class="patient-avatar">${initials}</div>
+      <div>
+        <div class="patient-name">${h(e.employee_name)}</div>
+        <div class="patient-sub">${h(e.employee_id)} · ${h(e.designation||'')} · ${h(e.location||'')}</div>
+      </div>
+      <div class="patient-actions">
+        <button class="btn btn-secondary" onclick="showSearch()">Back</button>
+        <button class="btn btn-primary" onclick="startConsultation()">New Consultation</button>
+      </div>
+    </div>`;
+
+  // Profile section
+  if (prof.blood_group || prof.family_history || prof.allergies || prof.chronic_conditions) {
+    html += `<div class="section profile-sec">
+      <div class="sec-title amber">Patient Profile</div>
+      <div class="field-row">
+        <div><label class="field-label">Blood Group</label><div>${h(prof.blood_group||'—')}</div></div>
+        <div><label class="field-label">Allergies</label><div>${h(prof.allergies||'—')}</div></div>
+      </div>
+      <div class="field-row">
+        <div><label class="field-label">Family History</label><div>${h(prof.family_history||'—')}</div></div>
+        <div><label class="field-label">Chronic Conditions</label><div>${h(prof.chronic_conditions||'—')}</div></div>
+      </div>
+    </div>`;
+  }
+
+  // Open goals
+  if (data.open_goals && data.open_goals.length) {
+    html += `<div class="section goal-sec">
+      <div class="sec-title">Open Goals <span class="hint-badge hint-fresh">${data.open_goals.length}</span></div>
+      <table><thead><tr><th>Goal</th><th>Target</th><th>Target Date</th><th>Set On</th></tr></thead><tbody>
+      ${data.open_goals.map(g => `<tr>
+        <td><strong>${h(g.goal_type==='other'?g.custom_text:g.goal_type)}</strong></td>
+        <td>${h(g.target_value||'—')}</td>
+        <td>${fmtDate(g.target_date)}</td>
+        <td>${fmtDate(g.set_on)}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  // Checkup History — merged AHC + consultation readings
+  const allReadings = [];
+  (data.ahc || []).forEach(r => {
+    allReadings.push({
+      source: 'AHC', parameter: r.parameter_name, value: r.value,
+      unit: r.value_unit, normal_range: r.normal_range,
+      risk_level: r.risk_level, category: r.category,
+      date: r.appointment_completed_on, year: r.report_year
+    });
+  });
+  (data.consultations || []).forEach(c => {
+    (c.readings || []).forEach(r => {
+      allReadings.push({
+        source: 'Consultation', parameter: r.parameter_name, value: r.value,
+        unit: r.unit, normal_range: r.normal_range,
+        risk_level: r.risk_level, category: null,
+        date: r.reading_date, year: null
+      });
+    });
+  });
+
+  // Group by parameter for collapsible view
+  const byParam = {};
+  allReadings.forEach(r => {
+    const key = r.parameter || 'Unknown';
+    if (!byParam[key]) byParam[key] = [];
+    byParam[key].push(r);
+  });
+
+  if (Object.keys(byParam).length) {
+    html += `<div class="section"><div class="sec-title">Checkup History</div>`;
+    Object.entries(byParam).forEach(([param, readings]) => {
+      const latest = readings[0];
+      const riskClass = riskCls(latest.risk_level);
+      html += `
+        <div class="collapsible-head" onclick="toggleCollapse(this)">
+          <span>${h(param)} ${riskBadge(latest.risk_level)}
+            <span style="color:var(--muted);font-size:11px;margin-left:8px;">${readings.length} reading(s)</span></span>
+          <span class="arrow">&#9654;</span>
+        </div>
+        <div class="collapsible-body">
+          <table><thead><tr><th>Value</th><th>Unit</th><th>Range</th><th>Risk</th><th>Source</th><th>Date</th></tr></thead><tbody>
+          ${readings.map(r => `<tr>
+            <td><strong>${h(r.value)}</strong></td><td>${h(r.unit||'—')}</td>
+            <td>${h(r.normal_range||'—')}</td><td>${riskBadge(r.risk_level)}</td>
+            <td><span style="font-size:11px;color:var(--muted);">${h(r.source)}</span></td>
+            <td>${fmtDate(r.date)}</td>
+          </tr>`).join('')}
+          </tbody></table>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Previous consultations
+  if (data.consultations && data.consultations.length) {
+    html += `<div class="section"><div class="sec-title">Previous Consultations
+      <span class="hint-badge hint-fresh">${data.consultations.length}</span></div>`;
+    data.consultations.forEach((c, idx) => {
+      html += `
+        <div class="collapsible-head" onclick="toggleCollapse(this)">
+          <span>Visit ${fmtDate(c.visit_date)} — Dr. ${h(c.doctor_name||'—')}
+            ${c.complaint ? ` — ${h(c.complaint).substring(0,50)}` : ''}</span>
+          <span class="arrow">&#9654;</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="field-row"><div><label class="field-label">BP</label>${h(c.bp||'—')}</div>
+            <div><label class="field-label">Pulse</label>${h(c.pulse||'—')}</div>
+            <div><label class="field-label">Weight</label>${h(c.weight||'—')}</div>
+            <div><label class="field-label">BMI</label>${h(c.bmi||'—')}</div></div>
+          ${c.complaint?`<div style="margin-bottom:8px;"><label class="field-label">Complaint</label>${h(c.complaint)}</div>`:''}
+          ${c.diagnosis?`<div style="margin-bottom:8px;"><label class="field-label">Diagnosis</label>${h(c.diagnosis)}</div>`:''}
+          ${c.medicines&&c.medicines.length?`<div style="margin-bottom:8px;"><label class="field-label">Medicines</label>
+            ${c.medicines.map(m=>`<div>${h(m.name)} ${m.dose?'— '+h(m.dose):''} ${m.frequency?'· '+h(m.frequency):''} ${m.duration?'· '+h(m.duration):''}</div>`).join('')}</div>`:''}
+          ${c.goals&&c.goals.length?`<div style="margin-bottom:8px;"><label class="field-label">Goals Set</label>
+            ${c.goals.map(g=>`<div>${h(g.goal_type==='other'?g.custom_text:g.goal_type)} — Target: ${h(g.target_value||'—')} (${h(g.status)})</div>`).join('')}</div>`:''}
+          ${c.progress_verdict?`<div><label class="field-label">Progress</label>
+            <strong>${c.progress_verdict==='improved'?'Improved':c.progress_verdict==='worsened'?'Worsened':'No change'}</strong>
+            ${c.progress_note?' — '+h(c.progress_note):''}</div>`:''}
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  document.getElementById('app').innerHTML = html;
+}
+
+function riskCls(level) {
+  if (!level) return '';
+  const l = String(level).toLowerCase();
+  if (l.includes('high')) return 'rb-high';
+  if (l.includes('medium')) return 'rb-medium';
+  if (l.includes('low')) return 'rb-low';
+  return 'rb-normal';
+}
+
+function toggleCollapse(el) {
+  el.classList.toggle('open');
+  const body = el.nextElementSibling;
+  if (body) body.classList.toggle('open');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEW: CONSULTATION FORM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+let formState = {};
+let medicines = [];
+let goals = [];
+let readings = [];
+let exerciseList = [];
+let goalReviews = [];
+let checkupTypes = [];
+let goalTypes = [];
+
+async function startConsultation() {
+  pushView('consultation');
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+  const [ctRes, gtRes] = await Promise.all([
+    apiFetch('/api/checkup-types'),
+    apiFetch('/api/goal-types')
+  ]);
+  checkupTypes = Array.isArray(ctRes) ? ctRes : [];
+  goalTypes = Array.isArray(gtRes) ? gtRes : [];
+
+  const data = sessionData.patientData;
+  const e = data.employee;
+  const prof = data.profile || {};
+  const visitNum = (data.consultation_count || 0) + 1;
+
+  formState = {
+    opaque_id: e.opaque_id,
+    visit_date: today(),
+    blood_group: prof.blood_group || '',
+    family_history: prof.family_history || '',
+    allergies: prof.allergies || '',
+    chronic_conditions: prof.chronic_conditions || '',
+    bp: '', pulse: '', weight: '', height: '', bmi: '',
+    complaint: '', diagnosis: '', prev_medicine_history: '',
+    diet: '', follow_up_date: '', referral: '',
+    goal_notes: '', goal_doctor_score: null,
+    progress_verdict: '', progress_note: ''
+  };
+  medicines = [{ name: '', dose: '', frequency: '', duration: '' }];
+  goals = [];
+  readings = [];
+  exerciseList = [];
+  goalReviews = (data.open_goals || []).map(g => ({
+    goal_id: g.id, goal_type: g.goal_type, custom_text: g.custom_text,
+    target_value: g.target_value, action: '', points: null
+  }));
+
+  renderConsultationForm(e, visitNum);
+}
+
+function renderConsultationForm(e, visitNum) {
+  const initials = (e.employee_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  let html = `<div class="consult-form">
+    <div class="patient-header" style="margin-bottom:20px;">
+      <div class="patient-avatar">${initials}</div>
+      <div><div class="patient-name">${h(e.employee_name)}</div>
+        <div class="patient-sub">Visit #${visitNum} · ${h(e.employee_id)}</div></div>
+      <div class="patient-actions"><button class="btn btn-secondary" onclick="popView()">Cancel</button></div>
+    </div>
+
+    <div class="section profile-sec">
+      <div class="sec-title amber">Patient Profile <span class="hint-badge hint-prefill">Prefilled</span></div>
+      <div class="field-row">
+        <div><label class="field-label">Blood Group</label>
+          <input type="text" value="${h(formState.blood_group)}" onchange="formState.blood_group=this.value" class="prefilled"></div>
+        <div><label class="field-label">Allergies</label>
+          <input type="text" value="${h(formState.allergies)}" onchange="formState.allergies=this.value" class="prefilled"></div>
+      </div>
+      <div class="field-row">
+        <div><label class="field-label">Family History</label>
+          <textarea onchange="formState.family_history=this.value" class="prefilled">${h(formState.family_history)}</textarea></div>
+        <div><label class="field-label">Chronic Conditions</label>
+          <textarea onchange="formState.chronic_conditions=this.value" class="prefilled">${h(formState.chronic_conditions)}</textarea></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">1</span> Visit Details</div>
+      <div class="field-row">
+        <div><label class="field-label">Visit Date</label>
+          <input type="date" value="${formState.visit_date}" onchange="formState.visit_date=this.value"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">2</span> Vitals</div>
+      <div class="field-row">
+        <div><label class="field-label">BP</label><input type="text" placeholder="120/80" onchange="formState.bp=this.value"></div>
+        <div><label class="field-label">Pulse</label><input type="text" placeholder="72" onchange="formState.pulse=this.value"></div>
+      </div>
+      <div class="field-row">
+        <div><label class="field-label">Weight (kg)</label><input type="text" id="weight-inp" placeholder="70" onchange="formState.weight=this.value;calcBMI()"></div>
+        <div><label class="field-label">Height (cm)</label><input type="text" id="height-inp" placeholder="170" onchange="formState.height=this.value;calcBMI()"></div>
+        <div><label class="field-label">BMI</label><input type="text" id="bmi-inp" readonly></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">3</span> Consultation</div>
+      <div class="field-row">
+        <div><label class="field-label">Chief Complaint</label>
+          <textarea onchange="formState.complaint=this.value" placeholder="Patient's complaint…"></textarea></div>
+      </div>
+      <div class="field-row">
+        <div><label class="field-label">Diagnosis</label>
+          <textarea onchange="formState.diagnosis=this.value" placeholder="Diagnosis…"></textarea></div>
+      </div>
+      <div class="field-row">
+        <div><label class="field-label">Previous Medicine History</label>
+          <textarea onchange="formState.prev_medicine_history=this.value" placeholder="Previous medicines…"></textarea></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">4</span> Checkup Readings</div>
+      <div id="readings-list"></div>
+      <button class="btn btn-secondary" onclick="addReading()" style="margin-top:8px;">+ Add Reading</button>
+    </div>
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">5</span> Medicines</div>
+      <div id="medicines-list"></div>
+      <button class="btn btn-secondary" onclick="addMedicine()" style="margin-top:8px;">+ Add Medicine</button>
+    </div>
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">6</span> Diet &amp; Exercise</div>
+      <div class="field-row">
+        <div><label class="field-label">Diet</label>
+          <textarea onchange="formState.diet=this.value" placeholder="Dietary recommendations…"></textarea></div>
+      </div>
+      <div id="exercise-list"></div>
+      <button class="btn btn-secondary" onclick="addExercise()" style="margin-top:8px;">+ Add Exercise</button>
+    </div>
+
+    ${goalReviews.length ? `<div class="section goal-sec">
+      <div class="sec-title amber"><span class="num-badge amber">7</span> Goal Review</div>
+      <div id="goal-review-list"></div>
+      <div class="field-row" style="margin-top:12px;">
+        <div><label class="field-label">Goal Notes</label>
+          <textarea onchange="formState.goal_notes=this.value" placeholder="Notes on goal progress…"></textarea></div>
+      </div>
+      <div class="field-row">
+        <div><label class="field-label">Doctor Score (0-100)</label>
+          <input type="number" min="0" max="100" onchange="formState.goal_doctor_score=parseInt(this.value)||null" placeholder="Score"></div>
+      </div>
+    </div>` : ''}
+
+    ${(sessionData.patientData.consultation_count||0) >= 1 ? `<div class="section">
+      <div class="sec-title"><span class="num-badge">${goalReviews.length?'8':'7'}</span> Progress Since Last Visit</div>
+      <div class="field-row">
+        <div><label class="field-label">Verdict</label>
+          <select onchange="formState.progress_verdict=this.value">
+            <option value="">— Select —</option>
+            <option value="improved">Improved</option>
+            <option value="no_change">No Change</option>
+            <option value="worsened">Worsened</option>
+          </select></div>
+        <div><label class="field-label">Note</label>
+          <input type="text" onchange="formState.progress_note=this.value" placeholder="Optional note…"></div>
+      </div>
+    </div>` : ''}
+
+    <div class="section">
+      <div class="sec-title"><span class="num-badge">${goalReviews.length?((sessionData.patientData.consultation_count||0)>=1?'9':'8'):((sessionData.patientData.consultation_count||0)>=1?'8':'7')}</span> Health Goals</div>
+      <div id="goals-list"></div>
+      <button class="btn btn-secondary" onclick="addGoal()" style="margin-top:8px;">+ Add Goal</button>
+    </div>
+
+    <div class="section">
+      <div class="sec-title">Follow-up</div>
+      <div class="field-row">
+        <div><label class="field-label">Follow-up Date</label>
+          <input type="date" onchange="formState.follow_up_date=this.value"></div>
+        <div><label class="field-label">Referral</label>
+          <input type="text" onchange="formState.referral=this.value" placeholder="Specialist / department"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn btn-secondary" onclick="popView()">Cancel</button>
+      <button class="btn btn-primary" onclick="previewConsultation()">Preview &amp; Save</button>
+    </div>
+  </div>`;
+
+  document.getElementById('app').innerHTML = html;
+  renderMedicines();
+  renderReadings();
+  renderExercise();
+  renderGoals();
+  if (goalReviews.length) renderGoalReviews();
+}
+
+function calcBMI() {
+  const w = parseFloat(formState.weight);
+  const h = parseFloat(formState.height);
+  if (w > 0 && h > 0) {
+    formState.bmi = (w / ((h/100)**2)).toFixed(1);
+    const inp = document.getElementById('bmi-inp');
+    if (inp) inp.value = formState.bmi;
+  }
+}
+
+// Medicines
+function renderMedicines() {
+  const el = document.getElementById('medicines-list');
+  if (!el) return;
+  el.innerHTML = medicines.map((m,i) => `
+    <div class="field-row" style="align-items:flex-end;">
+      <div style="flex:2;"><label class="field-label">Name</label>
+        <input type="text" value="${h(m.name)}" onchange="medicines[${i}].name=this.value" placeholder="Medicine name"></div>
+      <div><label class="field-label">Dose</label>
+        <input type="text" value="${h(m.dose)}" onchange="medicines[${i}].dose=this.value" placeholder="500mg"></div>
+      <div><label class="field-label">Frequency</label>
+        <input type="text" value="${h(m.frequency)}" onchange="medicines[${i}].frequency=this.value" placeholder="1-0-1"></div>
+      <div><label class="field-label">Duration</label>
+        <input type="text" value="${h(m.duration)}" onchange="medicines[${i}].duration=this.value" placeholder="5 days"></div>
+      <div style="flex:0;"><button class="btn btn-danger" style="padding:8px 12px;font-size:12px;" onclick="medicines.splice(${i},1);renderMedicines()">x</button></div>
+    </div>`).join('');
+}
+function addMedicine() { medicines.push({name:'',dose:'',frequency:'',duration:''}); renderMedicines(); }
+
+// Readings
+function renderReadings() {
+  const el = document.getElementById('readings-list');
+  if (!el) return;
+  el.innerHTML = readings.map((r,i) => `
+    <div class="field-row" style="align-items:flex-end;">
+      <div style="flex:2;"><label class="field-label">Parameter</label>
+        <select onchange="onReadingParamChange(${i},this.value)">
+          <option value="">— Select —</option>
+          ${checkupTypes.map(ct=>`<option value="${h(ct.name)}" ${r.parameter===ct.name?'selected':''}>${h(ct.name)}</option>`).join('')}
+        </select></div>
+      <div><label class="field-label">Value</label>
+        <input type="number" step="any" value="${r.value||''}" onchange="onReadingValueChange(${i},this.value)" placeholder="Value"></div>
+      <div><label class="field-label">Unit</label>
+        <input type="text" value="${h(r.unit||'')}" readonly></div>
+      <div><label class="field-label">Range</label>
+        <input type="text" value="${h(r.normal_range||'')}" readonly></div>
+      <div><label class="field-label">Risk</label>
+        <select onchange="readings[${i}].risk_level=this.value;readings[${i}].risk_override=true;">
+          <option value="">Auto</option>
+          <option value="1 Normal" ${r.risk_level==='1 Normal'?'selected':''}>Normal</option>
+          <option value="2 Low Risk" ${r.risk_level==='2 Low Risk'?'selected':''}>Low Risk</option>
+          <option value="3 Medium Risk" ${r.risk_level==='3 Medium Risk'?'selected':''}>Medium Risk</option>
+          <option value="4 High Risk" ${r.risk_level==='4 High Risk'?'selected':''}>High Risk</option>
+        </select></div>
+      <div><label class="field-label">Date</label>
+        <input type="date" value="${r.reading_date||formState.visit_date}" onchange="readings[${i}].reading_date=this.value"></div>
+      <div style="flex:0;"><button class="btn btn-danger" style="padding:8px 12px;font-size:12px;" onclick="readings.splice(${i},1);renderReadings()">x</button></div>
+    </div>`).join('');
+}
+function addReading() { readings.push({parameter:'',value:'',unit:'',normal_range:'',reading_date:formState.visit_date,risk_level:'',risk_override:false}); renderReadings(); }
+function onReadingParamChange(idx, name) {
+  readings[idx].parameter = name;
+  const ct = checkupTypes.find(c=>c.name===name);
+  if (ct) { readings[idx].unit = ct.unit||''; readings[idx].normal_range = ct.normal_range||''; }
+  autoCalcRisk(idx);
+  renderReadings();
+}
+function onReadingValueChange(idx, val) {
+  readings[idx].value = val;
+  autoCalcRisk(idx);
+  renderReadings();
+}
+function autoCalcRisk(idx) {
+  const r = readings[idx];
+  if (r.risk_override) return;
+  const val = parseFloat(r.value);
+  if (isNaN(val) || !r.normal_range) { r.risk_level = ''; return; }
+  r.risk_level = calcRiskJS(val, r.normal_range);
+}
+function calcRiskJS(value, rangeStr) {
+  if (!rangeStr) return '';
+  const s = rangeStr.trim();
+  let lo = null, hi = null;
+  let m = s.match(/^[<≤]\s*([\d.]+)$/);
+  if (m) { hi = parseFloat(m[1]); }
+  else { m = s.match(/^[>≥]\s*([\d.]+)$/); if (m) { lo = parseFloat(m[1]); }
+  else { m = s.match(/^([\d.]+)\s*[-–—]\s*([\d.]+)$/);
+    if (m) { lo = parseFloat(m[1]); hi = parseFloat(m[2]); }
+    else { const p = s.split('-'); if (p.length===2) { lo=parseFloat(p[0]);hi=parseFloat(p[1]); } } } }
+  if (lo===null && hi===null) return '';
+  let pct;
+  if (lo!==null && hi!==null) {
+    if (value>=lo && value<=hi) return '1 Normal';
+    const span = hi-lo||1;
+    pct = value<lo ? (lo-value)/span : (value-hi)/span;
+  } else if (hi!==null) {
+    if (value<=hi) return '1 Normal';
+    pct = (value-hi)/(hi||1);
+  } else {
+    if (value>=lo) return '1 Normal';
+    pct = (lo-value)/(lo||1);
+  }
+  if (pct<=0.2) return '2 Low Risk';
+  if (pct<=0.5) return '3 Medium Risk';
+  return '4 High Risk';
+}
+
+// Exercise
+function renderExercise() {
+  const el = document.getElementById('exercise-list');
+  if (!el) return;
+  el.innerHTML = exerciseList.map((ex,i) => `
+    <div class="field-row" style="align-items:flex-end;">
+      <div><label class="field-label">Activity</label>
+        <input type="text" value="${h(ex.activity)}" onchange="exerciseList[${i}].activity=this.value" placeholder="Walking, Yoga…"></div>
+      <div><label class="field-label">Details</label>
+        <input type="text" value="${h(ex.details)}" onchange="exerciseList[${i}].details=this.value" placeholder="30 min daily"></div>
+      <div style="flex:0;"><button class="btn btn-danger" style="padding:8px 12px;font-size:12px;" onclick="exerciseList.splice(${i},1);renderExercise()">x</button></div>
+    </div>`).join('');
+}
+function addExercise() { exerciseList.push({activity:'',details:''}); renderExercise(); }
+
+// Goals
+function renderGoals() {
+  const el = document.getElementById('goals-list');
+  if (!el) return;
+  el.innerHTML = goals.map((g,i) => `
+    <div class="field-row" style="align-items:flex-end;">
+      <div><label class="field-label">Type</label>
+        <select onchange="goals[${i}].type=this.value">
+          <option value="">— Select —</option>
+          ${goalTypes.map(gt=>`<option value="${h(gt.name)}" ${g.type===gt.name?'selected':''}>${h(gt.name)}</option>`).join('')}
+          <option value="other" ${g.type==='other'?'selected':''}>Other</option>
+        </select></div>
+      ${g.type==='other'?`<div><label class="field-label">Custom</label>
+        <input type="text" value="${h(g.custom_text||'')}" onchange="goals[${i}].custom_text=this.value"></div>`:''}
+      <div><label class="field-label">Target</label>
+        <input type="text" value="${h(g.target_value||'')}" onchange="goals[${i}].target_value=this.value" placeholder="Target value"></div>
+      <div><label class="field-label">By Date</label>
+        <input type="date" value="${g.target_date||''}" onchange="goals[${i}].target_date=this.value"></div>
+      <div style="flex:0;"><button class="btn btn-danger" style="padding:8px 12px;font-size:12px;" onclick="goals.splice(${i},1);renderGoals()">x</button></div>
+    </div>`).join('');
+}
+function addGoal() { goals.push({type:'',custom_text:'',target_value:'',target_date:''}); renderGoals(); }
+
+// Goal Reviews
+function renderGoalReviews() {
+  const el = document.getElementById('goal-review-list');
+  if (!el) return;
+  el.innerHTML = goalReviews.map((gr,i) => `
+    <div class="field-row" style="align-items:flex-end;padding:8px;background:#f7faf8;border-radius:8px;margin-bottom:6px;">
+      <div style="flex:2;"><strong>${h(gr.goal_type==='other'?gr.custom_text:gr.goal_type)}</strong>
+        <div style="font-size:11px;color:var(--muted);">Target: ${h(gr.target_value||'—')}</div></div>
+      <div><label class="field-label">Action</label>
+        <select onchange="goalReviews[${i}].action=this.value;renderGoalReviews();">
+          <option value="">No action</option>
+          <option value="close" ${gr.action==='close'?'selected':''}>Close / Complete</option>
+          <option value="update" ${gr.action==='update'?'selected':''}>Update Target</option>
+        </select></div>
+      ${gr.action==='close'?`<div><label class="field-label">Points</label>
+        <input type="number" min="0" max="100" value="${gr.points||''}" onchange="goalReviews[${i}].points=parseInt(this.value)||null"></div>`:''}
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEW: PREVIEW
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function previewConsultation() {
+  pushView('preview');
+  const e = sessionData.patientData.employee;
+  const form = formState;
+  const meds = medicines.filter(m=>m.name);
+  const gls = goals.filter(g=>g.type);
+  const exs = exerciseList.filter(ex=>ex.activity);
+  const rdgs = readings.filter(r=>r.parameter && r.value);
+
+  const visit = form.visit_date ? new Date(form.visit_date) : new Date();
+  const visitFmt = visit.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+  const docName = sessionData.username || 'Doctor';
+  const orgName = sessionData.cfg?.orgName || 'EmpStats';
+
+  let html = `
+    <div class="no-print-bar">
+      <span>Review the consultation before saving.</span>
+      <div class="preview-actions">
+        <button class="btn btn-secondary" onclick="popView()">Edit</button>
+        <button class="btn btn-primary" id="print-save-btn" onclick="printAndSave()">Print &amp; Save</button>
+        <button class="btn btn-primary" id="save-btn" onclick="saveConsultation()">Save</button>
+      </div>
+    </div>
+    <div class="rx-wrap">
+      <div class="rx-header">
+        <div><div class="rx-clinic">${h(orgName)}</div><div class="rx-tag">Medical Consultation Report</div></div>
+        <div><div class="dr-name">${h(docName)}</div><div class="dr-title">${h(visitFmt)}</div></div>
+      </div>
+      <div class="rx-pt">
+        <div><div class="k">Patient</div><div class="v">${h(e.employee_name)}</div></div>
+        <div><div class="k">Employee ID</div><div class="v">${h(e.employee_id)}</div></div>
+        <div><div class="k">Age / Sex</div><div class="v">${h(e.age||'—')} / ${h(e.gender||'—')}</div></div>
+        <div><div class="k">Designation</div><div class="v">${h(e.designation||'—')}</div></div>
+        <div><div class="k">Blood Group</div><div class="v">${h(form.blood_group||'—')}</div></div>
+        <div><div class="k">Location</div><div class="v">${h(e.location||'—')}</div></div>
+      </div>
+
+      ${(form.family_history||form.allergies||form.chronic_conditions)?`<div class="rx-section">
+        <div class="rx-h">Patient Profile</div><div class="rx-body">
+        ${form.family_history?`<div style="margin-bottom:4px;"><strong>Family History:</strong> ${h(form.family_history)}</div>`:''}
+        ${form.allergies?`<div style="margin-bottom:4px;"><strong>Allergies:</strong> ${h(form.allergies)}</div>`:''}
+        ${form.chronic_conditions?`<div><strong>Chronic Conditions:</strong> ${h(form.chronic_conditions)}</div>`:''}
+        </div></div>`:''}
+
+      ${form.complaint?`<div class="rx-section"><div class="rx-h">Chief Complaint</div><div class="rx-body">${h(form.complaint)}</div></div>`:''}
+
+      <div class="rx-section"><div class="rx-h">Vitals</div><div class="rx-vitals">
+        ${[['BP',form.bp],['Pulse',form.pulse],['Weight',form.weight?form.weight+' kg':'—'],
+           ['Height',form.height?form.height+' cm':'—'],['BMI',form.bmi||'—']].map(([k,v])=>
+          `<div><div class="k">${k}</div><div class="v">${h(v||'—')}</div></div>`).join('')}
+      </div></div>
+
+      ${form.diagnosis?`<div class="rx-section"><div class="rx-h">Diagnosis</div><div class="rx-body">${h(form.diagnosis)}</div></div>`:''}
+      ${form.prev_medicine_history?`<div class="rx-section"><div class="rx-h">Previous Medicine History</div><div class="rx-body">${h(form.prev_medicine_history)}</div></div>`:''}
+
+      ${rdgs.length?`<div class="rx-section"><div class="rx-h">Checkup Readings</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr><th>Parameter</th><th>Value</th><th>Unit</th><th>Range</th><th>Risk</th><th>Date</th></tr></thead>
+          <tbody>${rdgs.map(r=>`<tr>
+            <td>${h(r.parameter)}</td><td><strong>${h(r.value)}</strong></td><td>${h(r.unit||'—')}</td>
+            <td>${h(r.normal_range||'—')}</td><td>${riskBadge(r.risk_level)}</td>
+            <td>${fmtDate(r.reading_date)}</td></tr>`).join('')}</tbody>
+        </table></div>`:''}
+
+      ${meds.length?`<div class="rx-section"><div class="rx-h">Medicines</div>
+        <ol class="rx-meds">${meds.map((m,i)=>`<li><span class="med-num">${i+1}.</span><span>
+          <span class="med-name">${h(m.name)}</span>
+          ${m.dose?` <span class="med-detail">— ${h(m.dose)}</span>`:''}
+          ${m.frequency?`<span class="med-detail"> · ${h(m.frequency)}</span>`:''}
+          ${m.duration?`<span class="med-detail"> · ${h(m.duration)}</span>`:''}
+        </span></li>`).join('')}</ol></div>`:''}
+
+      ${form.diet?`<div class="rx-section"><div class="rx-h">Diet</div><div class="rx-body">${h(form.diet)}</div></div>`:''}
+
+      ${exs.length?`<div class="rx-section"><div class="rx-h">Exercise</div><div class="rx-body">
+        ${exs.map(ex=>`<div style="margin-bottom:4px;"><strong>${h(ex.activity)}</strong>${ex.details?' — '+h(ex.details):''}</div>`).join('')}
+      </div></div>`:''}
+
+      ${gls.length?`<div class="rx-section"><div class="rx-h">Health Goals</div>
+        <ol class="rx-goals" style="list-style:none;padding:0;">
+          ${gls.map(g=>`<li><span class="gname">${h(g.type==='other'?g.custom_text:g.type)}</span>
+            <span class="gtgt">Target: <b>${h(g.target_value||'—')}</b></span>
+            ${g.target_date?`<span class="gtgt">By: <b>${fmtDate(g.target_date)}</b></span>`:''}</li>`).join('')}
+        </ol></div>`:''}
+
+      ${(form.goal_notes||form.goal_doctor_score!=null)?`<div class="rx-section"><div class="rx-h">Goal Review</div>
+        ${form.goal_doctor_score!=null?`<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">Doctor Score</span>
+          <div style="flex:1;height:10px;background:#dfe4e0;border-radius:5px;overflow:hidden;">
+            <div style="width:${form.goal_doctor_score}%;height:100%;background:${form.goal_doctor_score>=70?'#2e7d32':form.goal_doctor_score>=40?'#b26a00':'var(--red)'};border-radius:5px;"></div>
+          </div><span style="font-size:14px;font-weight:800;">${form.goal_doctor_score}/100</span></div>`:''}
+        ${form.goal_notes?`<div style="font-size:13.5px;font-style:italic;color:var(--muted);">"${h(form.goal_notes)}"</div>`:''}</div>`:''}
+
+      ${form.progress_verdict?`<div class="rx-section"><div class="rx-h">Progress</div><div class="rx-body">
+        <strong>${form.progress_verdict==='improved'?'Improved':form.progress_verdict==='worsened'?'Worsened':'No change'}</strong>
+        ${form.progress_note?' — '+h(form.progress_note):''}</div></div>`:''}
+
+      ${form.follow_up_date||form.referral?`<div class="rx-section"><div class="rx-h">Follow-up</div><div class="rx-body">
+        ${form.follow_up_date?`Next visit: <b>${fmtDate(form.follow_up_date)}</b>`:''} ${form.referral?`Referred to: <b>${h(form.referral)}</b>`:''}</div></div>`:''}
+
+      <div class="rx-footer">
+        <div><div>Generated by ${h(orgName)}</div><div>Ref: ${h(e.employee_id)}-${h(form.visit_date||today())}</div></div>
+        <div><div class="rx-sig-line">${h(docName)} — Signature</div></div>
+      </div>
+    </div>`;
+
+  document.getElementById('app').innerHTML = html;
+}
+
+async function doSave() {
+  const payload = {
+    ...formState,
+    medicines: medicines.filter(m=>m.name),
+    goals: goals.filter(g=>g.type),
+    readings: readings.filter(r=>r.parameter&&r.value).map(r=>({
+      parameter: r.parameter, value: r.value, unit: r.unit,
+      normal_range: r.normal_range, reading_date: r.reading_date,
+      risk_level: r.risk_level, risk_override: r.risk_override
+    })),
+    exercise: exerciseList.filter(ex=>ex.activity),
+    goal_reviews: goalReviews.filter(gr=>gr.action)
+  };
+  const result = await apiFetch('/api/consultation', {method:'POST', body:payload});
+  if (!result || result.error) { showToast(result?.error||'Save failed.','error'); return false; }
+  return true;
+}
+
+async function saveConsultation() {
+  const btn = document.getElementById('save-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner spinner-sm"></span>Saving…';
+  const ok = await doSave();
+  if (!ok) { btn.disabled=false; btn.textContent='Save'; return; }
+  clearAndExit();
+}
+
+async function printAndSave() {
+  const btn = document.getElementById('print-save-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner spinner-sm"></span>Saving…';
+  const ok = await doSave();
+  if (!ok) { btn.disabled=false; btn.innerHTML='Print & Save'; return; }
+  btn.innerHTML='Opening print…';
+  window.print();
+  setTimeout(clearAndExit, 300);
+}
+
+function clearAndExit() {
+  sessionData.patientData = null;
+  sessionData.confirmEmp = null;
+  sessionData.currentOid = null;
+  showSearch();
+  showToast('Consultation saved successfully.', 'success');
+}
+
+init();
+</script>
+</body>
+</html>

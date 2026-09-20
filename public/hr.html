@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HR Rewards Dashboard — EmpStats</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+.status-chip{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:capitalize;}
+.status-open{background:#e8f5e9;color:var(--green-dark);}
+.status-closed{background:#e3f2fd;color:#1565c0;}
+.status-cancelled{background:#f0f0f0;color:#666;}
+.score-txt{font-weight:800;}
+.score-high{color:#2e7d32;}
+.score-mid{color:var(--amber);}
+.score-low{color:var(--red);}
+.filter-bar{margin-bottom:14px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">✚</div>
+      <div class="brand-name" id="org-name">EmpStats</div>
+      <div class="role-chip" id="role-chip">HR</div>
+    </div>
+    <button class="btn-ghost" onclick="authLogout()">Sign out</button>
+  </div>
+  <div class="body-card" id="app">
+    <div class="loader"><div class="spinner"></div></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="/auth.js"></script>
+<script>
+'use strict';
+
+let sessionData = {};
+let dashData = { goals: [], employee_scores: [], rated_goals: [], total_employees: 0 };
+let slicerOptions = {};
+let currentFilters = {};
+let charts = {};
+let goalsFilter = { status: '', search: '' };
+
+if (window.Chart && window.ChartDataLabels) {
+  Chart.register(ChartDataLabels);
+}
+
+async function init() {
+  const session = await authRequire('hr');
+  if (!session) return;
+  const chip = document.getElementById('role-chip');
+  if (chip && session.username) chip.textContent = 'HR · ' + session.username;
+  const cfg = await getConfig();
+  sessionData.cfg = cfg;
+  if (cfg.orgName) document.getElementById('org-name').textContent = cfg.orgName;
+
+  const opts = await apiFetch('/api/slicer-options');
+  slicerOptions = (opts && !opts.error) ? opts : {};
+
+  renderShell();
+  await loadDashboard();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHELL — slicer bar + tabs
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function selectOptions(list, selected) {
+  return `<option value="">All</option>` + (list || []).map(v =>
+    `<option value="${h(v)}" ${selected === v ? 'selected' : ''}>${h(v)}</option>`).join('');
+}
+
+function renderShell() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="slicer-bar">
+      <select id="f-division" onchange="onFilterChange()">${selectOptions(slicerOptions.divisions)}</select>
+      <select id="f-location" onchange="onFilterChange()">${selectOptions(slicerOptions.locations)}</select>
+      <select id="f-band" onchange="onFilterChange()">${selectOptions(slicerOptions.bands)}</select>
+      <select id="f-zone" onchange="onFilterChange()">${selectOptions(slicerOptions.zones)}</select>
+      <select id="f-vertical" onchange="onFilterChange()">${selectOptions(slicerOptions.verticals)}</select>
+      <select id="f-age" onchange="onFilterChange()">${selectOptions(slicerOptions.age_ranges)}</select>
+      <select id="f-gender" onchange="onFilterChange()">${selectOptions(slicerOptions.genders)}</select>
+      <span class="slicer-reset" onclick="resetFilters()">Reset</span>
+    </div>
+
+    <div class="dash-tabs">
+      <div class="dash-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</div>
+      <div class="dash-tab" data-tab="goals" onclick="switchTab('goals')">Goals</div>
+      <div class="dash-tab" data-tab="scores" onclick="switchTab('scores')">Employee Scores</div>
+    </div>
+
+    <div class="dash-panel active" id="panel-overview"><div class="loader"><div class="spinner"></div></div></div>
+    <div class="dash-panel" id="panel-goals"></div>
+    <div class="dash-panel" id="panel-scores"></div>
+  `;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.dash-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  document.querySelectorAll('.dash-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+
+function onFilterChange() {
+  currentFilters = {
+    division: document.getElementById('f-division').value,
+    location: document.getElementById('f-location').value,
+    band: document.getElementById('f-band').value,
+    zone: document.getElementById('f-zone').value,
+    vertical: document.getElementById('f-vertical').value,
+    age_range: document.getElementById('f-age').value,
+    gender: document.getElementById('f-gender').value
+  };
+  loadDashboard();
+}
+
+function resetFilters() {
+  ['f-division','f-location','f-band','f-zone','f-vertical','f-age','f-gender'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  currentFilters = {};
+  loadDashboard();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DATA LOAD
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+async function loadDashboard() {
+  const params = new URLSearchParams();
+  Object.entries(currentFilters).forEach(([k, v]) => { if (v) params.set(k, v); });
+  const qs = params.toString();
+  document.getElementById('panel-overview').innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  const data = await apiFetch(`/api/hr/dashboard${qs ? '?' + qs : ''}`);
+  if (!data || data.error) {
+    document.getElementById('panel-overview').innerHTML =
+      `<p style="text-align:center;color:var(--red);padding:40px;">${h(data?.error || 'Failed to load dashboard.')}</p>`;
+    return;
+  }
+  dashData = {
+    goals: data.goals || [],
+    employee_scores: data.employee_scores || [],
+    rated_goals: data.rated_goals || [],
+    total_employees: data.total_employees || 0
+  };
+  renderOverview();
+  renderGoalsTab();
+  renderScoresTab();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OVERVIEW TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function renderOverview() {
+  const goals = dashData.goals;
+  const activeGoals = goals.filter(g => g.status === 'open').length;
+  const completedGoals = goals.filter(g => g.status === 'closed').length;
+  const scoredCount = dashData.employee_scores.length;
+
+  const panel = document.getElementById('panel-overview');
+  panel.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-default">
+        <div class="kpi-num">${dashData.total_employees}</div>
+        <div class="kpi-lbl">Total Employees</div>
+      </div>
+      <div class="kpi-card kpi-default">
+        <div class="kpi-num">${activeGoals}</div>
+        <div class="kpi-lbl">Active Goals</div>
+      </div>
+      <div class="kpi-card kpi-info">
+        <div class="kpi-num">${completedGoals}</div>
+        <div class="kpi-lbl">Completed Goals</div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-num">${scoredCount}</div>
+        <div class="kpi-lbl">Scored Employees</div>
+      </div>
+    </div>
+
+    <div class="chart-grid-2">
+      <div class="chart-box">
+        <div class="chart-title">Goals by Status</div>
+        <canvas id="chart-goal-status" height="220"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Goals by Type</div>
+        <canvas id="chart-goal-type" height="220"></canvas>
+      </div>
+    </div>
+  `;
+
+  renderGoalStatusChart(goals);
+  renderGoalTypeChart(goals);
+}
+
+function destroyChart(key) {
+  if (charts[key]) { charts[key].destroy(); charts[key] = null; }
+}
+
+function renderGoalStatusChart(goals) {
+  destroyChart('goalStatus');
+  const counts = { open: 0, closed: 0, cancelled: 0 };
+  goals.forEach(g => { if (counts[g.status] !== undefined) counts[g.status]++; });
+  const ctx = document.getElementById('chart-goal-status');
+  if (!ctx) return;
+  charts.goalStatus = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Open', 'Closed', 'Cancelled'],
+      datasets: [{
+        data: [counts.open, counts.closed, counts.cancelled],
+        backgroundColor: ['#127a75', '#2e7d32', '#9e9e9e'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      cutout: '55%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        datalabels: {
+          color: '#fff',
+          font: { weight: 'bold', size: 12 },
+          formatter: v => v > 0 ? v : ''
+        }
+      }
+    }
+  });
+}
+
+function renderGoalTypeChart(goals) {
+  destroyChart('goalType');
+  const byType = {};
+  goals.forEach(g => {
+    const t = g.goal_type || 'other';
+    byType[t] = (byType[t] || 0) + 1;
+  });
+  const labels = Object.keys(byType);
+  const values = labels.map(l => byType[l]);
+  const palette = ['#1a5c3a', '#127a75', '#2e7d32', '#00897b', '#66bb6a', '#4db6ac', '#81c784', '#26a69a'];
+  const colors = labels.map((_, i) => palette[i % palette.length]);
+  const ctx = document.getElementById('chart-goal-type');
+  if (!ctx) return;
+  charts.goalType = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels.map(l => h(l)),
+      datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'end', align: 'start', color: '#fff',
+          font: { weight: 'bold', size: 11 },
+          formatter: v => v
+        }
+      },
+      scales: {
+        x: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GOALS TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function renderGoalsTab() {
+  const panel = document.getElementById('panel-goals');
+  panel.innerHTML = `
+    <div class="section-title">All Goals</div>
+    <div class="filter-bar">
+      <select id="goals-status-filter" onchange="onGoalsFilterChange()">
+        <option value="">All Statuses</option>
+        <option value="open">Open</option>
+        <option value="closed">Closed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <input type="text" class="filter-search" id="goals-search" placeholder="Search employee, doctor, goal…" oninput="onGoalsFilterChange()">
+    </div>
+    <div id="goals-table-wrap"></div>
+  `;
+  renderGoalsTable();
+}
+
+function onGoalsFilterChange() {
+  goalsFilter.status = document.getElementById('goals-status-filter').value;
+  goalsFilter.search = document.getElementById('goals-search').value.trim().toLowerCase();
+  renderGoalsTable();
+}
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function statusChip(status) {
+  const cls = status === 'open' ? 'status-open' : status === 'closed' ? 'status-closed' : 'status-cancelled';
+  return `<span class="status-chip ${cls}">${h(status || '—')}</span>`;
+}
+
+function renderGoalsTable() {
+  let rows = dashData.goals;
+  if (goalsFilter.status) rows = rows.filter(g => g.status === goalsFilter.status);
+  if (goalsFilter.search) {
+    const q = goalsFilter.search;
+    rows = rows.filter(g =>
+      (g.employee_name || '').toLowerCase().includes(q) ||
+      (g.doctor_name || '').toLowerCase().includes(q) ||
+      (g.goal_type || '').toLowerCase().includes(q) ||
+      (g.goal_text || '').toLowerCase().includes(q)
+    );
+  }
+
+  const wrap = document.getElementById('goals-table-wrap');
+  if (!rows.length) {
+    wrap.innerHTML = `<p style="text-align:center;color:var(--muted);padding:30px;">No goals match the current filters.</p>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th><th>Goal Type</th><th>Goal Text</th><th>Target Date</th>
+          <th>Status</th><th>Points</th><th>Doctor</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(g => `
+          <tr>
+            <td>${h(g.employee_name || '—')}</td>
+            <td>${h(g.goal_type || '—')}</td>
+            <td>${h(truncate(g.goal_text || '', 60))}</td>
+            <td>${fmtDate(g.target_date)}</td>
+            <td>${statusChip(g.status)}</td>
+            <td>${g.points != null ? h(g.points) : '—'}</td>
+            <td>${h(g.doctor_name || '—')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EMPLOYEE SCORES TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function scoreClass(score) {
+  if (score == null) return '';
+  if (score >= 8) return 'score-high';
+  if (score >= 5) return 'score-mid';
+  return 'score-low';
+}
+
+function renderScoresTab() {
+  const panel = document.getElementById('panel-scores');
+  const rows = [...dashData.employee_scores].sort((a, b) =>
+    (b.goal_doctor_score || 0) - (a.goal_doctor_score || 0)
+  );
+
+  if (!rows.length) {
+    panel.innerHTML = `
+      <div class="section-title">Employee Scores</div>
+      <p style="text-align:center;color:var(--muted);padding:30px;">No scored employees found.</p>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="section-title">Employee Scores</div>
+    <table>
+      <thead>
+        <tr><th>Employee</th><th>Score</th><th>Visit Date</th><th>Doctor</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${h(r.employee_name || '—')}</td>
+            <td><span class="score-txt ${scoreClass(r.goal_doctor_score)}">${r.goal_doctor_score != null ? h(r.goal_doctor_score) : '—'}</span></td>
+            <td>${fmtDate(r.visit_date)}</td>
+            <td>${h(r.doctor_name || '—')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+init();
+</script>
+</body>
+</html>
