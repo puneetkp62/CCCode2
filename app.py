@@ -13,8 +13,6 @@ from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from sqlalchemy import create_engine, text, func, or_, and_, desc, case
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -34,7 +32,6 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=10)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32 MB upload limit
 
 jwt = JWTManager(app)
-limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 # ── Database ─────────────────────────────────────────────────────────────────
 
@@ -313,7 +310,6 @@ def get_config():
 
 
 @app.route('/api/login', methods=['POST'])
-@limiter.limit('10/minute')
 def login():
     data = request.get_json(silent=True) or {}
     role     = (data.get('role') or '').strip().lower()
@@ -1879,4 +1875,4 @@ def slicer_options():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 3001))
     debug = os.getenv('DEBUG', '0') == '1'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    app.run(host='127.0.0.1', port=port, debug=debug)
