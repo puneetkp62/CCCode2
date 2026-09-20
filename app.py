@@ -1779,6 +1779,10 @@ def import_health():
                 try: return float(v)
                 except (ValueError, TypeError): return None
 
+            def safe_datetime(v):
+                dt = pd.to_datetime(v, errors='coerce')
+                return dt.to_pydatetime() if pd.notna(dt) else None
+
             hr_data = dict(
                 case_id=safe_int_h(val('case_id')),
                 application_id=safe_int_h(val('application_id')),
@@ -1789,9 +1793,9 @@ def import_health():
                 city=val('city'),
                 state=val('state'),
                 dc_name=val('dc_name'),
-                appointment_booked_on=pd.to_datetime(val('appointment_booked_on'), errors='coerce'),
-                appointment_completed_on=pd.to_datetime(val('appointment_completed_on'), errors='coerce'),
-                reports_upload_on=pd.to_datetime(val('reports_upload_on'), errors='coerce'),
+                appointment_booked_on=safe_datetime(val('appointment_booked_on')),
+                appointment_completed_on=safe_datetime(val('appointment_completed_on')),
+                reports_upload_on=safe_datetime(val('reports_upload_on')),
                 overall_health_score=safe_int_h(val('overall_health_score')),
                 overall_risk_category=val('overall_risk_category'),
                 risk_stage=safe_int_h(val('risk_stage')),
