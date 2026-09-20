@@ -68,7 +68,7 @@ class Employee(Base):
 
 class HealthRecord(Base):
     __tablename__ = 'health_records'
-    ahc_id                   = Column(BigInteger,  primary_key=True)
+    ahc_id                   = Column(BigInteger,  primary_key=True, autoincrement=False)
     case_id                  = Column(BigInteger)
     application_id           = Column(BigInteger)
     user_id                  = Column(BigInteger)
