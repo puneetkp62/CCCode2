@@ -62,7 +62,10 @@ def today_ist():
 MONTH_MAP = {
     'january': 1, 'february': 2, 'march': 3, 'april': 4,
     'may': 5, 'june': 6, 'july': 7, 'august': 8,
-    'september': 9, 'october': 10, 'november': 11, 'december': 12
+    'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+    'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9,
+    'oct': 10, 'nov': 11, 'dec': 12
 }
 MONTH_NAMES = {v: k.capitalize() for k, v in MONTH_MAP.items()}
 
@@ -75,7 +78,10 @@ def parse_month(val):
     s = str(val).strip().lower()
     if s.isdigit():
         return int(s)
-    return MONTH_MAP.get(s)
+    if MONTH_MAP.get(s):
+        return MONTH_MAP[s]
+    s_alpha = re.sub(r'[^a-z]', '', s)
+    return MONTH_MAP.get(s_alpha)
 
 
 def fmt_date(d):
@@ -1603,7 +1609,11 @@ def import_employees():
                 skipped += 1
                 continue
 
-            year_val = int(row['Year'])
+            try:
+                year_val = int(row['Year'])
+            except (ValueError, TypeError):
+                skipped += 1
+                continue
             month_val = parse_month(row['Month'])
             if not month_val:
                 skipped += 1
@@ -1629,16 +1639,24 @@ def import_employees():
                     return None
                 return str(v).strip() if isinstance(v, str) else v
 
+            def safe_int(v):
+                try: return int(float(v))
+                except (ValueError, TypeError): return None
+
+            def safe_float(v):
+                try: return float(v)
+                except (ValueError, TypeError): return None
+
             emp_data = dict(
-                sr_no=int(val('Sr. No.')) if val('Sr. No.') else None,
+                sr_no=safe_int(val('Sr. No.')),
                 location=val('Location'),
                 date_of_joining=parse_date(val('Date of Joining')),
-                technova_experience=float(val('TechNova Experience')) if val('TechNova Experience') else None,
-                outside_experience=float(val('Outside Experience')) if val('Outside Experience') else None,
-                total_experience=float(val('Total Experience')) if val('Total Experience') else None,
+                technova_experience=safe_float(val('TechNova Experience')),
+                outside_experience=safe_float(val('Outside Experience')),
+                total_experience=safe_float(val('Total Experience')),
                 total_experience_range=val('Total Experience Range'),
                 date_of_birth=parse_date(val('Date of Birth')),
-                age=int(val('Age')) if val('Age') else None,
+                age=safe_int(val('Age')),
                 age_range=val('Age Range'),
                 gender=val('Gender'),
                 core_group=val('Core Group'),
@@ -1753,10 +1771,18 @@ def import_health():
                     return None
                 return v
 
+            def safe_int_h(v):
+                try: return int(float(v))
+                except (ValueError, TypeError): return None
+
+            def safe_float_h(v):
+                try: return float(v)
+                except (ValueError, TypeError): return None
+
             hr_data = dict(
-                case_id=int(val('case_id')) if val('case_id') else None,
-                application_id=int(val('application_id')) if val('application_id') else None,
-                user_id=int(val('user_id')) if val('user_id') else None,
+                case_id=safe_int_h(val('case_id')),
+                application_id=safe_int_h(val('application_id')),
+                user_id=safe_int_h(val('user_id')),
                 opaque_id=oid,
                 gender=val('gender'),
                 age_group=val('age_group'),
@@ -1766,9 +1792,9 @@ def import_health():
                 appointment_booked_on=pd.to_datetime(val('appointment_booked_on'), errors='coerce'),
                 appointment_completed_on=pd.to_datetime(val('appointment_completed_on'), errors='coerce'),
                 reports_upload_on=pd.to_datetime(val('reports_upload_on'), errors='coerce'),
-                overall_health_score=int(val('overall_health_score')) if val('overall_health_score') else None,
+                overall_health_score=safe_int_h(val('overall_health_score')),
                 overall_risk_category=val('overall_risk_category'),
-                risk_stage=int(val('risk_stage')) if val('risk_stage') else None,
+                risk_stage=safe_int_h(val('risk_stage')),
                 cardiac_stage=val('cardiac_stage'),
                 blood_stage=val('blood_stage'),
                 hepatic_stage=val('hepatic_stage'),
@@ -1778,7 +1804,7 @@ def import_health():
                 thyroid_stage=val('thyroid_stage'),
                 cancer_stage=val('cancer_stage'),
                 parameter_name=val('parameter_name'),
-                value=float(val('value')) if val('value') else None,
+                value=safe_float_h(val('value')),
                 value_unit=val('value_unit'),
                 normal_range=val('normal_range'),
                 risk_level=val('risk_level'),
@@ -1787,8 +1813,8 @@ def import_health():
                 low_risk=val('low_risk'),
                 medium_risk=val('medium_risk'),
                 high_risk=val('high_risk'),
-                rn=int(val('rn')) if val('rn') else None,
-                report_year=int(val('report_year')) if val('report_year') else None,
+                rn=safe_int_h(val('rn')),
+                report_year=safe_int_h(val('report_year')),
             )
 
             if existing:
