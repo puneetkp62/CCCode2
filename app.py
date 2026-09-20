@@ -1609,12 +1609,13 @@ def import_employees():
                 skipped += 1
                 continue
 
-            oid, month_int = get_or_create_opaque_id(
+            oid, _ = get_or_create_opaque_id(
                 s, eid, ename,
                 str(row.get('Designation', '')) if pd.notna(row.get('Designation')) else None,
                 str(row.get('Title', '')) if pd.notna(row.get('Title')) else None,
-                year_val, month_int if isinstance(month_val, int) else month_val
+                year_val, month_val
             )
+            month_int = month_val
 
             existing = s.query(Employee).filter(
                 Employee.opaque_id == oid,
